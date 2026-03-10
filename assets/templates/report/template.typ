@@ -1,58 +1,49 @@
-#let template(content, show_toc: true) = {
-  set text(size: 10.8pt, fill: rgb("#111827"))
-  set par(justify: false, leading: 0.82em, spacing: 0.62em)
-  set block(spacing: 1.05em)
-  set list(spacing: 0.38em)
-  set enum(spacing: 0.38em)
+#let template(content, show_toc: false) = {
+  set text(size: 11pt, fill: rgb("#1f2937"))
+  set par(justify: false, leading: 0.98em, spacing: 0.72em)
+  set block(spacing: 1.12em)
+  set list(spacing: 0.68em, tight: false)
+  set enum(spacing: 0.68em, tight: false)
 
-  show heading.where(level: 1): set text(21pt, weight: "bold", fill: rgb("#0f172a"))
-  show heading.where(level: 1): set block(above: 1.4em, below: 0.9em)
-  show heading.where(level: 2): set text(15pt, weight: "bold", fill: rgb("#0f172a"))
-  show heading.where(level: 2): set block(above: 1.15em, below: 0.65em)
-  show heading.where(level: 3): set text(12.5pt, weight: "semibold", fill: rgb("#1e293b"))
-  show heading.where(level: 3): set block(above: 0.95em, below: 0.55em)
-  show link: set text(fill: rgb("#0f766e"))
+  show heading.where(level: 1): set text(23pt, weight: "bold", fill: rgb("#111827"))
+  show heading.where(level: 1): set block(above: 0.3em, below: 0.72em)
+  show heading.where(level: 2): set text(18pt, weight: "bold", fill: rgb("#111827"))
+  show heading.where(level: 2): set block(above: 1.38em, below: 0.62em)
+  show heading.where(level: 3): set text(14pt, weight: "semibold", fill: rgb("#374151"))
+  show heading.where(level: 3): set block(above: 1em, below: 0.46em)
+  show heading.where(level: 4): set text(11.6pt, weight: "semibold", fill: rgb("#374151"))
+  show heading.where(level: 5): set text(10.4pt, weight: "medium", fill: rgb("#4b5563"))
+  show heading.where(level: 6): set text(9.6pt, weight: "medium", fill: rgb("#6b7280"))
+
+  show link: set text(fill: rgb("#2563eb"))
+  show strong: set text(weight: "bold", fill: rgb("#111827"))
+  show emph: set text(style: "italic", fill: rgb("#4b5563"))
+
   show raw.where(block: false): box.with(
     inset: (x: 0.28em, y: 0.12em),
     radius: 3pt,
     fill: rgb("#f3f4f6"),
-    stroke: 0.6pt + rgb("#d1d5db"),
+    stroke: 0.55pt + rgb("#d9dee7"),
   )
-  show raw.where(block: true): block.with(
-    width: 100%,
-    inset: (x: 11pt, y: 10pt),
-    radius: 6pt,
-    fill: rgb("#f8fafc"),
-    stroke: 0.8pt + rgb("#d8dee8"),
-    above: 0.7em,
-    below: 0.95em,
-  )
-  show math.equation: set block(above: 0.75em, below: 0.95em)
+  show raw.where(block: true): set text(size: 9.8pt, fill: rgb("#334155"))
 
-  show figure: set align(center)
   show figure: set block(above: 1em, below: 1.1em)
-  show figure.caption: set text(9pt, fill: rgb("#64748b"))
+  show figure.caption: set text(size: 8.8pt, fill: rgb("#6b7280"))
+  show math.equation: set block(above: 0.65em, below: 0.85em)
 
   [
-    #align(center)[
-      #block(
-        below: 1.4em,
-      )[
-        #text(21pt, weight: "bold", fill: rgb("#0f172a"))[Document]
-        #v(0.35em)
-        #text(9pt, fill: rgb("#64748b"))[Generated from Markdown]
-      ]
-    ]
     #if show_toc [
-      #block[
-        #outline(indent: 1.6em)
+      #block(
+        inset: (x: 12pt, y: 10pt),
+        fill: rgb("#f8fafc"),
+        stroke: 0.7pt + rgb("#e2e8f0"),
+        radius: 4pt,
+        below: 1.2em,
+      )[
+        #set text(size: 9pt, fill: rgb("#475569"))
+        #outline(indent: 1.5em)
       ]
-      #pagebreak()
     ]
-    #block(
-      inset: (x: 2pt, y: 0pt),
-    )[
-      #content
-    ]
+    #content
   ]
 }

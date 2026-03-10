@@ -17,13 +17,17 @@ use typst_kit::fonts::{FontSearcher, FontSlot};
 use typst_kit::package::PackageStorage;
 
 use crate::config::RenderConfig;
-use crate::models::{RenderOptions, RenderRequest, SourceType, TemplateRecord};
-use crate::utils::{AppError, AppResult, markdown_to_typst};
+use crate::models::{AssetPayload, RenderOptions, RenderRequest, SourceType, TemplateRecord};
+use crate::utils::{
+    AppError, AppResult, apply_typst_asset_replacements, collect_local_markdown_assets,
+    markdown_to_typst,
+};
 
 #[derive(Debug, Clone)]
 pub struct RenderedProject {
     pub workdir: PathBuf,
     pub entrypoint: PathBuf,
+    pub assets: Vec<AssetPayload>,
 }
 
 #[async_trait]
@@ -72,8 +76,20 @@ impl Renderer for TypstRenderer {
                     &local_template_dir,
                 )
                 .await?;
-                let typst =
-                    markdown_to_typst(&request.source, &request.variables, &request.render_options);
+                let markdown_assets = collect_local_markdown_assets(
+                    &request.source,
+                    &std::env::current_dir()
+                        .map_err(|err| AppError::Internal(format!("failed to get current dir: {err}")))?,
+                )
+                .await?;
+                let typst = apply_typst_asset_replacements(
+                    &markdown_to_typst(
+                        &request.source,
+                        &request.variables,
+                        &request.render_options,
+                    ),
+                    &markdown_assets.replacements,
+                );
                 let content = wrap_with_template(
                     &typst,
                     template_record,
@@ -84,6 +100,7 @@ impl Renderer for TypstRenderer {
                 Ok(RenderedProject {
                     workdir: workdir.to_path_buf(),
                     entrypoint,
+                    assets: markdown_assets.assets,
                 })
             }
             SourceType::Typst => {
@@ -99,6 +116,7 @@ impl Renderer for TypstRenderer {
                 Ok(RenderedProject {
                     workdir: workdir.to_path_buf(),
                     entrypoint,
+                    assets: Vec::new(),
                 })
             }
         }
@@ -171,7 +189,7 @@ impl TypstSystemWorld {
             package_storage: PackageStorage::new(
                 None,
                 Some(config.packages_dir.clone()),
-                Downloader::new("typst-service"),
+                Downloader::new("typst-pdf-service"),
             ),
         })
     }
@@ -266,14 +284,18 @@ fn wrap_with_template(
             .join(&template.entrypoint),
     );
     let page_size = options.page_size.as_deref().unwrap_or("a4");
-    let margin = options.margin.as_deref().unwrap_or("2cm");
+    let margin = options.margin.as_deref().unwrap_or("22mm");
     let language = options.language.as_deref().unwrap_or("en");
-    let font_family = options.font_family.as_deref().unwrap_or("Liberation Serif");
-    let show_toc = options.show_toc.unwrap_or(true);
+    let font_expression = match options.font_family.as_deref() {
+        Some(font) => format!("\"{font}\""),
+        None => "(\"Segoe UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Liberation Sans\")"
+            .to_owned(),
+    };
+    let show_toc = options.show_toc.unwrap_or(false);
 
     format!(
         r#"#set page(paper: "{page_size}", margin: {margin})
-#set text(lang: "{language}", font: "{font_family}")
+#set text(lang: "{language}", font: {font_expression})
 #import "{import_path}": template
 
 #let content = [

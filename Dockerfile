@@ -8,10 +8,10 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/typst-test /usr/local/bin/typst-service
+COPY --from=builder /app/target/release/typst-pdf-service /usr/local/bin/typst-pdf-service
 COPY assets ./assets
 ENV APP_BIND=0.0.0.0:3000
 ENV APP_STORAGE_ROOT=/data
 ENV APP_API_KEYS=dev-secret
 EXPOSE 3000
-CMD ["typst-service"]
+CMD ["typst-pdf-service"]

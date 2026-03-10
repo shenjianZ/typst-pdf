@@ -1,0 +1,91 @@
+name: Build And Push Image
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push image to Alibaba Cloud ACR"
+        required: false
+        default: true
+        type: boolean
+      platforms:
+        description: "Target platforms"
+        required: false
+        default: "linux/amd64,linux/arm64"
+        type: string
+
+env:
+  IMAGE_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+  IMAGE_NAMESPACE: ${{ secrets.ALIYUN_NAME_SPACE }}
+  IMAGE_REPOSITORY: typst-pdf-service
+
+jobs:
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image name
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${IMAGE_REGISTRY}" || -z "${IMAGE_NAMESPACE}" || -z "${IMAGE_REPOSITORY}" ]]; then
+            echo "ALIYUN_REGISTRY / ALIYUN_NAMESPACE / ALIYUN_REPOSITORY must be configured as GitHub secrets."
+            exit 1
+          fi
+
+          echo "name=${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=sha,prefix=sha-
+
+      - name: Login to Alibaba Cloud ACR
+        if: github.event_name == 'push' || inputs.push == true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name == 'push' || inputs.push == true }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image summary
+        shell: bash
+        run: |
+          echo "Image: ${{ steps.image.outputs.name }}"
+          echo "Tags:"
+          echo "${{ steps.meta.outputs.tags }}"

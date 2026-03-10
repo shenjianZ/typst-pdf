@@ -167,6 +167,9 @@ impl RenderService {
                 self.template_repository.templates_dir(),
             )
             .await?;
+        self.workspace_repository
+            .write_assets(&workdir, &project.assets)
+            .await?;
         let pdf_path = self.renderer.compile_pdf(&project).await?;
 
         let id = job_id
@@ -268,6 +271,9 @@ async fn render_job(
             &workdir,
             template_repository.templates_dir(),
         )
+        .await?;
+    workspace_repository
+        .write_assets(&workdir, &project.assets)
         .await?;
     let pdf = renderer.compile_pdf(&project).await?;
     let artifact = artifact_repository

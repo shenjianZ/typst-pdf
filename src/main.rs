@@ -4,13 +4,13 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use typst_service::app::build_router;
-use typst_service::config::AppConfig;
-use typst_service::infra::AppState;
+use typst_pdf_service::app::build_router;
+use typst_pdf_service::config::AppConfig;
+use typst_pdf_service::infra::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    typst_service::utils::init_telemetry();
+    typst_pdf_service::utils::init_telemetry();
 
     let config = AppConfig::load()?;
     let state = Arc::new(AppState::build(config.clone()).await?);

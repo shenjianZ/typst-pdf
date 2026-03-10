@@ -29,10 +29,16 @@ pub fn markdown_to_typst(
     }
 
     context.out.push_str(
-        "#let md_quote(depth, body) = block(\n  inset: (x: 14pt, y: 10pt),\n  fill: rgb(\"#f8fafc\"),\n  stroke: (left: 2.4pt + rgb(\"#94a3b8\")),\n  radius: 6pt,\n  above: 0.75em,\n  below: 0.85em,\n)[\n  #set text(fill: rgb(\"#1f2937\"))\n  #body\n]\n",
+        "#let md_quote(depth, body) = block(\n  width: 100%,\n  inset: (x: 14pt, y: 11pt),\n  fill: rgb(\"#f8fafc\"),\n  stroke: (left: 2pt + rgb(\"#d5dce5\")),\n  radius: 4pt,\n  above: 0.85em,\n  below: 0.95em,\n)[\n  #set text(fill: rgb(\"#4b5563\"), style: \"italic\")\n  #body\n]\n",
     );
     context.out.push_str(
-        "#let md_figure(path, caption: none) = figure(\n  block(\n    width: 100%,\n    inset: 10pt,\n    radius: 8pt,\n    fill: rgb(\"#f8fafc\"),\n    stroke: 0.9pt + rgb(\"#d7dee7\"),\n  )[\n    #align(center)[#image(path, width: 88%)]\n  ],\n  caption: if caption == none or caption == [] { none } else { [#caption] },\n)\n",
+        "#let md_figure(path, caption: none) = block(\n  width: 100%,\n  above: 1em,\n  below: 1.05em,\n)[\n  #image(path, width: 100%)\n]\n",
+    );
+    context.out.push_str(
+        "#let md_codeblock(lang, body) = block(\n  width: 100%,\n  inset: (x: 13pt, y: 11pt),\n  radius: 5pt,\n  fill: rgb(\"#f5f7fb\"),\n  stroke: 0.7pt + rgb(\"#dde3ea\"),\n  above: 0.85em,\n  below: 1.05em,\n)[\n  #if lang != \"\" and lang != \"text\" [\n    #set text(size: 7.8pt, weight: \"medium\", fill: rgb(\"#6b7280\"))\n    #upper(lang)\n    #v(0.55em)\n  ]\n  #set par(leading: 0.72em)\n  #set text(size: 9.6pt, fill: rgb(\"#334155\"))\n  #raw(body, block: true, lang: lang)\n]\n",
+    );
+    context.out.push_str(
+        "#let md_task(checked) = box(\n  inset: 0pt,\n  baseline: 35%,\n)[\n  #box(\n    width: 0.92em,\n    height: 0.92em,\n    radius: 0.24em,\n    fill: if checked { rgb(\"#8b5cf6\") } else { white },\n    stroke: 0.8pt + if checked { rgb(\"#8b5cf6\") } else { rgb(\"#cbd5e1\") },\n    inset: 0pt,\n  )[\n    #if checked {\n      align(center + horizon)[#text(size: 0.62em, weight: \"bold\", fill: white)[✓]]\n    }\n  ]\n]\n",
     );
 
     for (key, value) in variables {
@@ -157,12 +163,18 @@ pub fn markdown_to_typst(
                 context.push_str(&format!("[^{}]", escape_text(&name)))
             }
             Event::TaskListMarker(checked) => {
-                context.push_str(if checked { "[x] " } else { "[ ] " });
+                context.push_str(&format!("#md_task({checked}) "));
             }
             Event::Html(_) | Event::InlineHtml(_) => {}
-            Event::InlineMath(expr) => context.push_str(&format!("${}$", escape_text(&expr))),
+            Event::InlineMath(expr) => context.push_str(&format!(
+                "${}$",
+                escape_text(&normalize_math_expr(&expr))
+            )),
             Event::DisplayMath(expr) => {
-                context.push_str(&format!("\n${}$\n\n", escape_text(&expr)))
+                context.push_str(&format!(
+                    "\n${}$\n\n",
+                    escape_text(&normalize_math_expr(&expr))
+                ))
             }
         }
     }
@@ -237,9 +249,9 @@ impl MarkdownContext {
             return;
         };
         self.out.push_str(&format!(
-            "#raw(\"{}\", block: true, lang: \"{}\")\n\n",
-            escape_text(code_block.content.trim_end_matches('\n')),
-            escape_text(&code_block.lang)
+            "#md_codeblock(\"{}\", \"{}\")\n\n",
+            escape_text(&code_block.lang),
+            escape_text(code_block.content.trim_end_matches('\n'))
         ));
     }
 
@@ -291,7 +303,7 @@ impl MarkdownContext {
             .max(1);
 
         self.out.push_str(&format!(
-            "#table(\n  columns: {column_count},\n  inset: (x: 10pt, y: 8pt),\n  stroke: (x, y) => if y == 0 {{ 1.1pt + rgb(\"#cbd5e1\") }} else {{ 0.7pt + rgb(\"#dbe2ea\") }},\n  fill: (x, y) => if y == 0 {{ rgb(\"#dbeafe\") }} else if calc.odd(y) {{ rgb(\"#f8fafc\") }} else {{ white }},\n"
+            "#table(\n  columns: {column_count},\n  inset: (x: 10pt, y: 8pt),\n  align: (x, y) => if y == 0 {{ center }} else {{ left }},\n  stroke: (x, y) => if y == 0 {{ 0.9pt + rgb(\"#d9dee7\") }} else {{ 0.7pt + rgb(\"#e3e8ee\") }},\n  fill: (x, y) => if y == 0 {{ rgb(\"#f3f4f6\") }} else {{ white }},\n"
         ));
 
         if let Some(header) = table.rows.iter().find(|row| row.is_header) {
@@ -415,6 +427,91 @@ fn escape_text(input: &str) -> String {
         .replace(']', "\\]")
 }
 
+fn normalize_math_expr(input: &str) -> String {
+    let mut normalized = String::new();
+    let mut chars = input.trim().chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            let mut command = String::new();
+            while let Some(next) = chars.peek() {
+                if next.is_ascii_alphabetic() {
+                    command.push(*next);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            if command.is_empty() {
+                if let Some(next) = chars.next() {
+                    normalized.push(next);
+                }
+                continue;
+            }
+
+            normalized.push_str(match command.as_str() {
+                "int" => "integral",
+                "sqrt" => "sqrt",
+                "infty" => "oo",
+                "pi" => "pi",
+                "alpha" => "alpha",
+                "beta" => "beta",
+                "gamma" => "gamma",
+                "theta" => "theta",
+                "lambda" => "lambda",
+                "mu" => "mu",
+                "sigma" => "sigma",
+                "phi" => "phi",
+                "omega" => "omega",
+                _ => command.as_str(),
+            });
+            continue;
+        }
+
+        normalized.push(match ch {
+            '{' => '(',
+            '}' => ')',
+            _ => ch,
+        });
+    }
+
+    split_identifier_runs(&normalized)
+}
+
+fn split_identifier_runs(input: &str) -> String {
+    let keywords = [
+        "sqrt", "sin", "cos", "tan", "log", "ln", "exp", "lim", "sum", "prod", "integral",
+        "oo", "pi", "alpha", "beta", "gamma", "theta", "lambda", "mu", "sigma", "phi",
+        "omega",
+    ];
+    let mut output = String::new();
+    let mut run = String::new();
+
+    let flush_run = |run: &mut String, output: &mut String| {
+        if run.is_empty() {
+            return;
+        }
+        if run.len() > 1 && !keywords.contains(&run.as_str()) {
+            output.push_str(&run.chars().map(|ch| ch.to_string()).collect::<Vec<_>>().join(" "));
+        } else {
+            output.push_str(run);
+        }
+        run.clear();
+    };
+
+    for ch in input.chars() {
+        if ch.is_ascii_alphabetic() {
+            run.push(ch);
+        } else {
+            flush_run(&mut run, &mut output);
+            output.push(ch);
+        }
+    }
+    flush_run(&mut run, &mut output);
+    output
+}
+
 fn sanitize_ident(value: &str) -> String {
     value
         .chars()
@@ -495,7 +592,7 @@ Inline footnote[^one] and image ![alt](image.png).
         assert!(output.contains("\\$cash"));
         assert!(output.contains("+ ordered"));
         assert!(output.contains("  - nested"));
-        assert!(output.contains("[x] done"));
+        assert!(output.contains("#md_task(true) done"));
         assert!(output.contains("#md_quote(1)["));
         assert!(output.contains("#table("));
         assert!(output.contains("#strong["));
@@ -519,12 +616,21 @@ Inline footnote[^one] and image ![alt](image.png).
         assert!(output.contains("#super[superscript]"));
         assert!(output.contains("#link(\"https://openai.com/\")"));
         assert!(output.contains("#md_quote(1)["));
-        assert!(output.contains("#raw(\"fn main() {"));
+        assert!(output.contains("#md_codeblock(\"rust\", \"fn main() {"));
         assert!(output.contains("#table("));
         assert!(!output.contains("<span data-demo"));
         assert!(output.contains("inline html fragment"));
         assert!(output.contains("#md_figure(\"diagram.svg\""));
         assert!(output.contains("$a^2 + b^2 = c^2$"));
         assert!(output.contains("[^note]"));
+    }
+
+    #[test]
+    fn normalizes_latex_style_math_expressions() {
+        let markdown = "Inline: $E = mc^2$\n\n$$\n\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}\n$$\n";
+        let output = markdown_to_typst(markdown, &BTreeMap::new(), &RenderOptions::default());
+
+        assert!(output.contains("$E = m c^2$"));
+        assert!(output.contains("integral_(-oo)^(oo) e^(-x^2) d x = sqrt(pi)"));
     }
 }
