@@ -257,10 +257,14 @@ fn load_fonts(fonts_dir: &Path) -> (FontBook, Vec<FontSlot>) {
 fn wrap_with_template(
     body: &str,
     template: &TemplateRecord,
-    template_dir: &Path,
+    _template_dir: &Path,
     options: &RenderOptions,
 ) -> String {
-    let import_path = normalize_path(&template_dir.join(&template.entrypoint));
+    let import_path = normalize_path(
+        &Path::new("templates")
+            .join(&template.id)
+            .join(&template.entrypoint),
+    );
     let page_size = options.page_size.as_deref().unwrap_or("a4");
     let margin = options.margin.as_deref().unwrap_or("2cm");
     let language = options.language.as_deref().unwrap_or("en");
@@ -277,7 +281,7 @@ fn wrap_with_template(
 ]
 
 #show: doc => template(
-  content: content,
+  content,
   show_toc: {show_toc}
 )
 "#
@@ -307,4 +311,127 @@ async fn copy_dir_all(source: &Path, destination: &Path) -> AppResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use chrono::Utc;
+    use tempfile::tempdir;
+
+    use super::{compile_project, wrap_with_template};
+    use crate::config::RenderConfig;
+    use crate::models::{RenderOptions, TemplateRecord};
+    use crate::utils::markdown_to_typst;
+
+    #[test]
+    fn compiles_complex_markdown_to_pdf() {
+        let markdown = r#"# Title
+
+Paragraph with #hash and $cash.
+
+1. ordered
+   - nested item
+   - [x] done item
+
+> quoted text
+
+| Name | Value |
+| --- | --- |
+| A | `code` |
+
+Inline footnote[^one].
+
+[^one]: Footnote text
+"#;
+        let body = markdown_to_typst(markdown, &BTreeMap::new(), &RenderOptions::default());
+
+        let workspace = tempdir().expect("workspace");
+        let template_dir = workspace.path().join("templates").join("report");
+        std::fs::create_dir_all(&template_dir).expect("template dir");
+        std::fs::write(
+            template_dir.join("template.typ"),
+            "#let template(content, show_toc: true) = [#content]",
+        )
+        .expect("template");
+
+        let template = TemplateRecord {
+            id: "report".to_owned(),
+            name: "Report".to_owned(),
+            description: None,
+            entrypoint: "template.typ".to_owned(),
+            created_at: Utc::now(),
+        };
+        let entrypoint = workspace.path().join("main.typ");
+        std::fs::write(
+            &entrypoint,
+            wrap_with_template(&body, &template, &template_dir, &RenderOptions::default()),
+        )
+        .expect("entrypoint");
+
+        let pdf = compile_project(
+            &RenderConfig {
+                fonts_dir: workspace.path().join("fonts"),
+                packages_dir: workspace.path().join("packages"),
+                timeout_secs: 30,
+            },
+            workspace.path(),
+            &entrypoint,
+        )
+        .expect("pdf");
+
+        assert!(!pdf.is_empty());
+    }
+
+    #[test]
+    fn compiles_all_markdown_fixture_to_pdf() {
+        let markdown = include_str!("../../data/examples/all-markdown-syntax.md");
+        let body = markdown_to_typst(markdown, &BTreeMap::new(), &RenderOptions::default());
+        let workspace = tempdir().expect("workspace");
+        let template_dir = workspace.path().join("templates").join("report");
+        std::fs::create_dir_all(&template_dir).expect("template dir");
+        std::fs::write(
+            template_dir.join("template.typ"),
+            "#let template(content, show_toc: true) = [#content]",
+        )
+        .expect("template");
+
+        std::fs::write(
+            workspace.path().join("diagram.svg"),
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="24" viewBox="0 0 64 24">
+  <rect width="64" height="24" fill="#f3f4f6"/>
+  <circle cx="12" cy="12" r="6" fill="#2563eb"/>
+  <rect x="24" y="7" width="28" height="10" rx="2" fill="#111827"/>
+</svg>"##,
+        )
+        .expect("image");
+
+        let template = TemplateRecord {
+            id: "report".to_owned(),
+            name: "Report".to_owned(),
+            description: None,
+            entrypoint: "template.typ".to_owned(),
+            created_at: Utc::now(),
+        };
+        let entrypoint = workspace.path().join("main.typ");
+        std::fs::write(
+            &entrypoint,
+            wrap_with_template(&body, &template, &template_dir, &RenderOptions::default()),
+        )
+        .expect("entrypoint");
+
+        let pdf = compile_project(
+            &RenderConfig {
+                fonts_dir: workspace.path().join("fonts"),
+                packages_dir: workspace.path().join("packages"),
+                timeout_secs: 30,
+            },
+            workspace.path(),
+            &entrypoint,
+        )
+        .expect("pdf");
+
+        assert!(!pdf.is_empty());
+    }
 }
