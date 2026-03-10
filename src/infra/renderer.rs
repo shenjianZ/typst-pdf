@@ -264,10 +264,31 @@ impl TypstSystemWorld {
 
 fn load_fonts(fonts_dir: &Path) -> (FontBook, Vec<FontSlot>) {
     let mut searcher = FontSearcher::new();
-    let fonts = if fonts_dir.exists() {
-        searcher.search_with([fonts_dir])
-    } else {
+    let mut font_paths = Vec::new();
+
+    if fonts_dir.exists() {
+        font_paths.push(fonts_dir.to_path_buf());
+    }
+
+    for system_dir in [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        "/usr/share/fonts/truetype",
+        "/usr/share/fonts/opentype",
+        "C:\\Windows\\Fonts",
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+    ] {
+        let path = Path::new(system_dir);
+        if path.exists() {
+            font_paths.push(path.to_path_buf());
+        }
+    }
+
+    let fonts = if font_paths.is_empty() {
         searcher.search()
+    } else {
+        searcher.search_with(font_paths)
     };
     (fonts.book, fonts.fonts)
 }
