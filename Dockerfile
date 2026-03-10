@@ -25,10 +25,13 @@ RUN apt-get update && apt-get install -y \
     fonts-noto-cjk \
     fonts-liberation \
  && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /app/fonts \
+ && cp -r /usr/share/fonts/. /app/fonts/
 COPY --from=builder /app/target/release/typst-pdf-service /usr/local/bin/typst-pdf-service
 COPY assets ./assets
 ENV APP_BIND=0.0.0.0:3000
 ENV APP_STORAGE_ROOT=/data
 ENV APP_API_KEYS=dev-secret
+ENV APP_FONTS_DIR=/app/fonts
 EXPOSE 3000
 CMD ["typst-pdf-service"]
