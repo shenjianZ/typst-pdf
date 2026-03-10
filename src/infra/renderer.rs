@@ -267,7 +267,7 @@ fn load_fonts(fonts_dir: &Path) -> (FontBook, Vec<FontSlot>) {
     let mut font_paths = Vec::new();
 
     if fonts_dir.exists() {
-        font_paths.push(fonts_dir.to_path_buf());
+        extend_font_search_paths(&mut font_paths, fonts_dir);
     }
 
     for system_dir in [
@@ -281,9 +281,12 @@ fn load_fonts(fonts_dir: &Path) -> (FontBook, Vec<FontSlot>) {
     ] {
         let path = Path::new(system_dir);
         if path.exists() {
-            font_paths.push(path.to_path_buf());
+            extend_font_search_paths(&mut font_paths, path);
         }
     }
+
+    font_paths.sort();
+    font_paths.dedup();
 
     let fonts = if font_paths.is_empty() {
         searcher.search()
@@ -291,6 +294,25 @@ fn load_fonts(fonts_dir: &Path) -> (FontBook, Vec<FontSlot>) {
         searcher.search_with(font_paths)
     };
     (fonts.book, fonts.fonts)
+}
+
+fn extend_font_search_paths(paths: &mut Vec<PathBuf>, root: &Path) {
+    if !root.exists() {
+        return;
+    }
+
+    paths.push(root.to_path_buf());
+
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            extend_font_search_paths(paths, &path);
+        }
+    }
 }
 
 fn wrap_with_template(

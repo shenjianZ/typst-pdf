@@ -1,17 +1,17 @@
 services:
-  typst-pdf-service:
-    image: ${IMAGE_NAME}
-    container_name: typst-pdf-service
-    pull_policy: always
-    restart: unless-stopped
-    ports:
-      - "${APP_PORT:-3000}:3000"
-    environment:
-      APP_BIND: 0.0.0.0:3000
-      APP_API_KEYS: ${APP_API_KEYS:-dev-secret}
-      APP_STORAGE_ROOT: /data
-      APP_FONTS_DIR: /app/assets/fonts
-      APP_PACKAGES_DIR: /app/assets/packages
-      RUST_LOG: ${RUST_LOG:-info}
-    volumes:
-      - ./data:/data
+    typst-pdf-service:
+        image: ${IMAGE_NAME}
+        container_name: typst-pdf-service
+        pull_policy: always
+        restart: unless-stopped
+        ports:
+            - "${APP_PORT:-3000}:3000"
+        environment:
+            APP_BIND: 0.0.0.0:3000
+            APP_API_KEYS: ${APP_API_KEYS:-dev-secret}
+            APP_STORAGE_ROOT: /data
+            APP_FONTS_DIR: /app/fonts
+            APP_PACKAGES_DIR: /app/assets/packages
+            RUST_LOG: ${RUST_LOG:-info}
+        volumes:
+            - ./data:/data
