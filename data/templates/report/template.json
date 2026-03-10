@@ -1,0 +1,7 @@
+{
+  "id": "report",
+  "name": "Report",
+  "description": "Default document template",
+  "entrypoint": "template.typ",
+  "created_at": "2026-03-10T00:00:00Z"
+}
