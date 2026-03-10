@@ -7,7 +7,13 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    fontconfig \
+    fonts-noto-cjk \
+    fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/typst-pdf-service /usr/local/bin/typst-pdf-service
 COPY assets ./assets
 ENV APP_BIND=0.0.0.0:3000
