@@ -11,8 +11,13 @@ on:
         required: false
         default: true
         type: boolean
-      platforms:
-        description: "Target platforms"
+      build_multiarch:
+        description: "Build amd64+arm64 after fast amd64 push"
+        required: false
+        default: true
+        type: boolean
+      multiarch_platforms:
+        description: "Platforms for the final multi-arch image"
         required: false
         default: "linux/amd64,linux/arm64"
         type: string
@@ -23,12 +28,78 @@ env:
   IMAGE_REPOSITORY: typst-pdf-service
 
 jobs:
-  docker:
-    name: Build Docker Image
+  docker-amd64-fast:
+    name: Build amd64 first
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image name
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${IMAGE_REGISTRY}" || -z "${IMAGE_NAMESPACE}" || -z "${IMAGE_REPOSITORY}" ]]; then
+            echo "ALIYUN_REGISTRY / ALIYUN_NAME_SPACE / IMAGE_REPOSITORY must be configured."
+            exit 1
+          fi
+
+          echo "name=${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=sha,prefix=sha-
+            type=raw,value=amd64-latest
+            type=raw,value=${{ github.ref_name }}-amd64,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Login to Alibaba Cloud ACR
+        if: github.event_name == 'push' || inputs.push == true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' || inputs.push == true }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,scope=amd64,mode=max
+
+      - name: amd64 summary
+        shell: bash
+        run: |
+          echo "Fast amd64 image published first:"
+          echo "${{ steps.meta.outputs.tags }}"
+
+  docker-multiarch-final:
+    name: Build multi-arch and replace tags
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    if: github.event_name == 'push' || inputs.build_multiarch == true
 
     steps:
       - name: Checkout repository
@@ -47,7 +118,7 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${IMAGE_REGISTRY}" || -z "${IMAGE_NAMESPACE}" || -z "${IMAGE_REPOSITORY}" ]]; then
-            echo "ALIYUN_REGISTRY / ALIYUN_NAMESPACE / ALIYUN_REPOSITORY must be configured as GitHub secrets."
+            echo "ALIYUN_REGISTRY / ALIYUN_NAME_SPACE / IMAGE_REPOSITORY must be configured."
             exit 1
           fi
 
@@ -71,21 +142,22 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build and push image
+      - name: Build and push final multi-arch image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'linux/amd64,linux/arm64' }}
+          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.multiarch_platforms || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name == 'push' || inputs.push == true }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=multiarch
+          cache-to: type=gha,scope=multiarch,mode=max
 
-      - name: Image summary
+      - name: Multi-arch summary
         shell: bash
         run: |
-          echo "Image: ${{ steps.image.outputs.name }}"
-          echo "Tags:"
+          echo "Final multi-arch image replaced the shared tags with:"
           echo "${{ steps.meta.outputs.tags }}"
