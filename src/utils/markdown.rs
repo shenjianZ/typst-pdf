@@ -29,7 +29,10 @@ pub fn markdown_to_typst(
     }
 
     context.out.push_str(
-        "#let md_quote(depth, body) = block(\n  inset: (x: 12pt, y: 8pt),\n  stroke: (left: 2pt + luma(180)),\n  radius: 4pt,\n)[\n  #body\n]\n",
+        "#let md_quote(depth, body) = block(\n  inset: (x: 14pt, y: 10pt),\n  fill: rgb(\"#f8fafc\"),\n  stroke: (left: 2.4pt + rgb(\"#94a3b8\")),\n  radius: 6pt,\n  above: 0.75em,\n  below: 0.85em,\n)[\n  #set text(fill: rgb(\"#1f2937\"))\n  #body\n]\n",
+    );
+    context.out.push_str(
+        "#let md_figure(path, caption: none) = figure(\n  block(\n    width: 100%,\n    inset: 10pt,\n    radius: 8pt,\n    fill: rgb(\"#f8fafc\"),\n    stroke: 0.9pt + rgb(\"#d7dee7\"),\n  )[\n    #align(center)[#image(path, width: 88%)]\n  ],\n  caption: if caption == none or caption == [] { none } else { [#caption] },\n)\n",
     );
 
     for (key, value) in variables {
@@ -77,6 +80,7 @@ pub fn markdown_to_typst(
                 Tag::Image { dest_url, .. } => {
                     context.image_href = Some(dest_url.to_string());
                     context.in_image = true;
+                    context.image_alt = Some(String::new());
                 }
                 Tag::FootnoteDefinition(name) => context.push_str(&format!("\n[^{name}]: ")),
                 Tag::Table(alignments) => context.start_table(alignments),
@@ -106,7 +110,21 @@ pub fn markdown_to_typst(
                 TagEnd::Link => context.push_char(']'),
                 TagEnd::Image => {
                     if let Some(path) = context.image_href.take() {
-                        context.push_str(&format!("#image(\"{}\")", escape_text(&path)));
+                        let caption = context
+                            .image_alt
+                            .take()
+                            .unwrap_or_default()
+                            .trim()
+                            .to_owned();
+                        if caption.is_empty() {
+                            context.push_str(&format!("#md_figure(\"{}\")", escape_text(&path)));
+                        } else {
+                            context.push_str(&format!(
+                                "#md_figure(\"{}\", caption: [{}])",
+                                escape_text(&path),
+                                escape_text(&caption)
+                            ));
+                        }
                     }
                     context.in_image = false;
                 }
@@ -121,14 +139,20 @@ pub fn markdown_to_typst(
                 _ => {}
             },
             Event::Text(text) => {
-                if !context.in_image {
+                if context.in_image {
+                    if let Some(alt) = context.image_alt.as_mut() {
+                        alt.push_str(&text);
+                    }
+                } else {
                     context.push_str(&escape_text(&text));
                 }
             }
             Event::Code(code) => context.push_str(&format!("#raw(\"{}\")", escape_text(&code))),
             Event::SoftBreak => context.push_char('\n'),
             Event::HardBreak => context.push_str("\\\n"),
-            Event::Rule => context.push_str("\n#line(length: 100%)\n\n"),
+            Event::Rule => {
+                context.push_str("\n#line(length: 100%, stroke: 1pt + rgb(\"#d7dee7\"))\n\n")
+            }
             Event::FootnoteReference(name) => {
                 context.push_str(&format!("[^{}]", escape_text(&name)))
             }
@@ -153,6 +177,7 @@ struct MarkdownContext {
     list_stack: Vec<char>,
     image_href: Option<String>,
     in_image: bool,
+    image_alt: Option<String>,
     quote_depth: usize,
     code_block: Option<CodeBlockState>,
     table: Option<TableState>,
@@ -266,7 +291,7 @@ impl MarkdownContext {
             .max(1);
 
         self.out.push_str(&format!(
-            "#table(\n  columns: {column_count},\n  inset: 8pt,\n  stroke: luma(210),\n"
+            "#table(\n  columns: {column_count},\n  inset: (x: 10pt, y: 8pt),\n  stroke: (x, y) => if y == 0 {{ 1.1pt + rgb(\"#cbd5e1\") }} else {{ 0.7pt + rgb(\"#dbe2ea\") }},\n  fill: (x, y) => if y == 0 {{ rgb(\"#dbeafe\") }} else if calc.odd(y) {{ rgb(\"#f8fafc\") }} else {{ white }},\n"
         ));
 
         if let Some(header) = table.rows.iter().find(|row| row.is_header) {
@@ -477,7 +502,7 @@ Inline footnote[^one] and image ![alt](image.png).
         assert!(output.contains("Name"));
         assert!(output.contains("Value"));
         assert!(output.contains("[^one]"));
-        assert!(output.contains("#image(\"image.png\")"));
+        assert!(output.contains("#md_figure(\"image.png\""));
     }
 
     #[test]
@@ -498,7 +523,7 @@ Inline footnote[^one] and image ![alt](image.png).
         assert!(output.contains("#table("));
         assert!(!output.contains("<span data-demo"));
         assert!(output.contains("inline html fragment"));
-        assert!(output.contains("#image(\"diagram.svg\")"));
+        assert!(output.contains("#md_figure(\"diagram.svg\""));
         assert!(output.contains("$a^2 + b^2 = c^2$"));
         assert!(output.contains("[^note]"));
     }
